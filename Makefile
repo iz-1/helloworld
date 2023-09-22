@@ -15,18 +15,18 @@ cgb_rom := $(cgb_src:.asm=.gbc)
 all:    $(dmg_rom) $(cgb_rom)
 
 %.gb: %.o
-        $(LD) $(LDFLAGS1) $@ $<
-        $(FX) $(FXFLAGS1) $@
+	$(LD) $(LDFLAGS1) $@ $<
+	$(FX) $(FXFLAGS1) $@
 
 %.gbc: %.o
-        $(LD) $(LDFLAGS2) $@ $<
-        $(FX) $(FXFLAGS2) $@
+	$(LD) $(LDFLAGS2) $@ $<
+	$(FX) $(FXFLAGS2) $@
 
 %.o: %.asm
-        $(AS) $(ASFLAGS) $@ $<
+	$(AS) $(ASFLAGS) $@ $<
 
 clean:
-        rm -f dmg/*.o
-        rm -f dmg/*.gb
-        rm -f cgb/*.o
-        rm -f cgb/*.gbc
+	rm -f dmg/*.o
+	rm -f dmg/*.gb
+	rm -f cgb/*.o
+	rm -f cgb/*.gbc

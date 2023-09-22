@@ -226,5 +226,5 @@ window_map:
 
 current:	DS	1			; usually you read keys state and store it into variable for further processing
 previous:	DS	1			; this is previous keys state used by debouncing part of read_keys function
-x		DS	1
-y		DS	1
+x		EQU	1
+y		EQU	1
