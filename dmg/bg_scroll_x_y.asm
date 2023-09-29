@@ -70,6 +70,7 @@ start:
 	ei					; enable interrupts
 
 .the_end
+	call	parse_input			; read joypad and update inputs array that holds individual keys status
 	halt					; save battery
 ;	nop					; nop after halt is mandatory but rgbasm takes care of it :)
 	jr	.the_end			; endless loop
@@ -84,10 +85,11 @@ vblank:
 	reti
 
 .scroll
-	ldh	a,[direction]			; first load direction value
-.right
-	cp	0				; move right if it's 0
-	jr	nz,.down			; not 'right', check another direction
+	;ldh	a,[direction]			; first load direction value
+.chkRight
+	ldh	a,[btn_rt]
+	cp	"+"				; move right if it's 0
+	jr	nz,.chkDown			; not 'right', check another direction
 	ldh	a,[rSCX]			; increase scroll x
 	inc	a
 	ldh	[rSCX],a
@@ -98,9 +100,10 @@ vblank:
 .r_done
 	reti
 
-.down
-	cp	1				; move down if it's 1
-	jr	nz,.left			; not 'down', check another direction
+.chkDown
+	ldh	a,[btn_dn]
+	cp	"+"				; move down if it's 1
+	jr	nz,.chkLeft			; not 'down', check another direction
 	ldh	a,[rSCY]			; increase scroll y
 	inc	a
 	ldh	[rSCY],a
@@ -111,9 +114,10 @@ vblank:
 .d_done
 	reti
 
-.left
-	cp	2				; move left if it's 2
-	jr	nz,.up				; not 'left', check another direction
+.chkLeft
+	ldh	a,[btn_lt]
+	cp	"+"				; move left if it's 2
+	jr	nz,.chkUp				; not 'left', check another direction
 	ldh	a,[rSCX]			; decrease scroll x
 	dec	a
 	ldh	[rSCX],a
@@ -125,7 +129,10 @@ vblank:
 
 	reti
 
-.up						; no point in checking direction here sinc it's last possibility
+.chkUp						; no point in checking direction here sinc it's last possibility
+	ldh	a,[btn_up]
+	cp	"+"
+	jr	nz,.u_done
 	ldh	a,[rSCY]			; decrease scroll y
 	dec	a
 	ldh	[rSCY],a
@@ -136,6 +143,98 @@ vblank:
 .u_done
 	reti
 
+;-------------------------------------------------------------------------------	
+parse_input:
+;-------------------------------------------------------------------------------
+	
+		ld	a,"-"				; button not pressed, you could write $2D instead
+		ld	hl,inputs			; 8 byte array that holds individual keys status
+		ld	c,8
+	.clear
+		ld	[hl+],a				; mark all keys as not pressed
+		dec	c
+		jr	nz,.clear
+	
+		call	read_keys			; read joypad
+	
+		ld	a,"+"				; button pressed, you could write $2B instead
+		dec	l				; hl points here to next byte after inputs array, move it back to point on btn_a
+	.btn_a
+		bit	0,b				; is button a pressed ? (bit must be 1)
+		jr	z,.btn_b			; no, check other key (apparently it's 0)
+		ldh	[btn_a],a			; it is, mark it as +
+	.btn_b
+		bit	1,b				; ...
+		jr	z,.select
+		ldh	[btn_b],a
+	.select
+		bit	2,b
+		jr	z,.start
+		ldh	[btn_sl],a
+	.start
+		bit	3,b
+		jr	z,.right
+		ldh	[btn_st],a
+	.right
+		bit	4,b
+		jr	z,.left
+		ldh	[btn_rt],a
+	.left
+		bit	5,b
+		jr	z,.up
+		ldh	[btn_lt],a
+	.up
+		bit	6,b
+		jr	z,.down
+		ldh	[btn_up],a
+	.down
+		bit	7,b
+		ret	z
+		ldh	[btn_dn],a
+	
+		ret
+
+;-------------------------------------------------------------------------------
+read_keys:
+;-------------------------------------------------------------------------------
+; this function returns two different values in b and c registers:
+; b - returns raw state (pressing key triggers given action continuously as long as it's pressed - it does not prevent bouncing)
+; c - returns debounced state (pressing key triggers given action only once - key must be released and pressed again)
+
+		ld      a,$20				; read P15 - returns a, b, select, start
+		ldh     [rP1],a        
+		ldh     a,[rP1]				; mandatory
+		ldh     a,[rP1]
+	cpl					; rP1 returns not pressed keys as 1 and pressed as 0, invert it to make result more readable
+		and     $0f				; lower nibble has a, b, select, start state
+	swap	a				
+	ld	b,a
+
+		ld      a,$10				; read P14 - returns up, down, left, right
+		ldh     [rP1],a
+		ldh     a,[rP1]				; mandatory
+		ldh     a,[rP1]
+		ldh     a,[rP1]
+		ldh     a,[rP1]
+		ldh     a,[rP1]
+		ldh     a,[rP1]
+	cpl					; rP1 returns not pressed keys as 1 and pressed as 0, invert it to make result more readable
+		and     $0f				; lower nibble has up, down, left, right state
+	or	b				; combine P15 and P14 states in one byte
+		ld      b,a				; store it
+
+	ldh	a,[previous]			; this is when important part begins, load previous P15 & P14 state
+	xor	b				; result will be 0 if it's the same as current read
+	and	b				; keep buttons that were pressed during this read only
+	ldh	[current],a			; store final result in variable and register
+	ld	c,a
+	ld	a,b				; current P15 & P14 state will be previous in next read
+	ldh	[previous],a
+
+	ld	a,$30				; reset rP1
+		ldh     [rP1],a
+
+	ret
 
 ;-------------------------------------------------------------------------------	
 copy:
@@ -188,7 +287,17 @@ picture_map:
 
 	SECTION	"Variables",HRAM
 
-delay:
-	ds	1
-direction:
-	ds	1
+delay:		DS	1
+direction:	DS	1
+
+current:	DS	1			; usually you read keys state and store it into variable for further processing
+previous:	DS	1			; this is previous keys state used by debouncing part of read_keys function
+inputs:						; array of buttons
+btn_dn:		DS	1
+btn_up:		DS	1
+btn_lt:		DS	1
+btn_rt:		DS	1
+btn_st:		DS	1
+btn_sl:		DS	1
+btn_b:		DS	1
+btn_a:		DS	1
